@@ -4,13 +4,12 @@ import android.content.Context
 import android.media.projection.MediaProjection
 import android.util.Log
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.sources.audio.MicrophoneSource
+import com.pedro.encoder.input.sources.video.ScreenSource
 import com.pedro.library.rtmp.RtmpStream
-import com.pedro.library.source.ScreenSource
-import com.pedro.library.source.MicrophoneSource
 
 /**
- * Manages RTMPS screen streaming using RootEncoder 2.7.x new StreamBase API.
- * Uses RtmpStream + ScreenSource (supports rtmp:// and rtmps://)
+ * Manages RTMPS screen streaming using RootEncoder 2.7.x StreamBase API.
  */
 class StreamingManager(
     private val context: Context,
@@ -30,13 +29,11 @@ class StreamingManager(
         try {
             onStateChanged(StreamState.CONNECTING)
 
-            val stream = RtmpStream(context, connectChecker)
+            val screenSource = ScreenSource(context, mediaProjection)
+            val stream = RtmpStream(context, connectChecker, screenSource, MicrophoneSource())
             rtmpStream = stream
 
-            // Prepare video: width, height, bitrate (2.5Mbps)
             val videoOk = stream.prepareVideo(width, height, 2_500_000)
-
-            // Prepare audio: sampleRate, stereo, bitrate
             val audioOk = stream.prepareAudio(44100, true, 128_000)
 
             if (!videoOk || !audioOk) {
@@ -44,10 +41,6 @@ class StreamingManager(
                 onStateChanged(StreamState.ERROR)
                 return
             }
-
-            // Switch to screen source
-            stream.changeVideoSource(ScreenSource(context, mediaProjection))
-            stream.changeAudioSource(MicrophoneSource())
 
             val fullUrl = if (streamKey.isBlank()) rtmpsUrl
                          else "${rtmpsUrl.trimEnd('/')}/$streamKey"
@@ -79,7 +72,7 @@ class StreamingManager(
             Log.d(TAG, "Connection started: $url")
         }
         override fun onConnectionSuccess() {
-            Log.d(TAG, "Connected! Streaming live.")
+            Log.d(TAG, "Connected!")
             onStateChanged(StreamState.LIVE)
         }
         override fun onConnectionFailed(reason: String) {
