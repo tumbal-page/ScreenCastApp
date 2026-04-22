@@ -58,7 +58,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-service:2.7.0'
 
     // RTMP/RTMPS streaming library (Pedro Gallardo - proven & mature)
-    implementation 'com.github.pedroSG94.RootEncoder:library:2.4.2'
+    implementation 'com.github.pedroSG94.RootEncoder:library:2.7.2'
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'

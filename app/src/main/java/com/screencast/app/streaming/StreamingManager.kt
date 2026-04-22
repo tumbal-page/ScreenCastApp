@@ -1,24 +1,18 @@
 package com.screencast.app.streaming
 
 import android.content.Context
-import android.media.MediaCodecInfo
 import android.media.projection.MediaProjection
 import android.util.Log
-import com.pedro.encoder.input.audio.MicrophoneManager
-import com.pedro.encoder.input.audio.CustomAudioEffect
-import com.pedro.encoder.utils.CodecUtil
+import com.pedro.common.ConnectChecker
 import com.pedro.library.rtmps.RtmpsDisplay
-import com.pedro.library.util.streamclient.RtmpStreamClient
 
 /**
- * Manages RTMPS screen streaming using RootEncoder (Pedro Gallardo).
- * Handles: screen capture, audio with noise suppression, RTMPS push.
+ * Manages RTMPS screen streaming using RootEncoder 2.7.2
  */
 class StreamingManager(
     private val context: Context,
     private val onStateChanged: (StreamState) -> Unit
 ) {
-
     private val TAG = "StreamingManager"
     private var rtmpsDisplay: RtmpsDisplay? = null
 
@@ -33,24 +27,22 @@ class StreamingManager(
         try {
             onStateChanged(StreamState.CONNECTING)
 
-            rtmpsDisplay = RtmpsDisplay(context, true, connectCheckerRtmps)
+            rtmpsDisplay = RtmpsDisplay(context, true, connectChecker)
 
-            // Video config: H.264, 2.5 Mbps, 30fps, hardware encoder
             val videoReady = rtmpsDisplay!!.prepareVideo(
                 width, height,
-                30,           // fps
-                2_500_000,    // bitrate 2.5 Mbps
-                0,            // rotation
+                30,         // fps
+                2_500_000,  // 2.5 Mbps bitrate
+                0,          // rotation
                 dpi
             )
 
-            // Audio config: 128kbps, 44100Hz, stereo, with noise suppressor
             val audioReady = rtmpsDisplay!!.prepareAudio(
-                128_000,  // bitrate
-                44100,    // sample rate
-                true,     // stereo
-                true,     // echo canceler
-                true      // noise suppressor
+                128_000,    // bitrate
+                44100,      // sample rate
+                true,       // stereo
+                true,       // echo canceler
+                true        // noise suppressor
             )
 
             if (!videoReady || !audioReady) {
@@ -59,12 +51,12 @@ class StreamingManager(
                 return
             }
 
-            // Start screen capture with MediaProjection
             rtmpsDisplay!!.startDisplay(mediaProjection)
 
-            // Build full RTMPS URL with stream key
-            val fullUrl = buildUrl(rtmpsUrl, streamKey)
-            Log.d(TAG, "Connecting to: $fullUrl")
+            val fullUrl = if (streamKey.isBlank()) rtmpsUrl
+                         else "${rtmpsUrl.trimEnd('/')}/$streamKey"
+
+            Log.d(TAG, "Connecting: $fullUrl")
             rtmpsDisplay!!.startStream(fullUrl)
 
         } catch (e: Exception) {
@@ -86,19 +78,12 @@ class StreamingManager(
 
     fun isStreaming() = rtmpsDisplay?.isStreaming == true
 
-    private fun buildUrl(base: String, key: String): String {
-        // If user already included stream key in URL, use as-is
-        if (key.isBlank()) return base
-        val cleanBase = base.trimEnd('/')
-        return "$cleanBase/$key"
-    }
-
-    private val connectCheckerRtmps = object : com.pedro.common.ConnectChecker {
+    private val connectChecker = object : ConnectChecker {
         override fun onConnectionStarted(url: String) {
             Log.d(TAG, "Connection started: $url")
         }
         override fun onConnectionSuccess() {
-            Log.d(TAG, "Connected! Streaming live.")
+            Log.d(TAG, "Connected!")
             onStateChanged(StreamState.LIVE)
         }
         override fun onConnectionFailed(reason: String) {
@@ -106,7 +91,7 @@ class StreamingManager(
             onStateChanged(StreamState.ERROR)
         }
         override fun onNewBitrate(bitrate: Long) {
-            Log.d(TAG, "Bitrate: $bitrate bps")
+            Log.d(TAG, "Bitrate: ${bitrate / 1000}kbps")
         }
         override fun onDisconnect() {
             Log.w(TAG, "Disconnected")
