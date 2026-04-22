@@ -4,17 +4,20 @@ import android.content.Context
 import android.media.projection.MediaProjection
 import android.util.Log
 import com.pedro.common.ConnectChecker
-import com.pedro.library.rtmps.RtmpsDisplay
+import com.pedro.library.rtmp.RtmpStream
+import com.pedro.library.source.ScreenSource
+import com.pedro.library.source.MicrophoneSource
 
 /**
- * Manages RTMPS screen streaming using RootEncoder 2.7.2
+ * Manages RTMPS screen streaming using RootEncoder 2.7.x new StreamBase API.
+ * Uses RtmpStream + ScreenSource (supports rtmp:// and rtmps://)
  */
 class StreamingManager(
     private val context: Context,
     private val onStateChanged: (StreamState) -> Unit
 ) {
     private val TAG = "StreamingManager"
-    private var rtmpsDisplay: RtmpsDisplay? = null
+    private var rtmpStream: RtmpStream? = null
 
     fun startStreaming(
         mediaProjection: MediaProjection,
@@ -27,37 +30,30 @@ class StreamingManager(
         try {
             onStateChanged(StreamState.CONNECTING)
 
-            rtmpsDisplay = RtmpsDisplay(context, true, connectChecker)
+            val stream = RtmpStream(context, connectChecker)
+            rtmpStream = stream
 
-            val videoReady = rtmpsDisplay!!.prepareVideo(
-                width, height,
-                30,         // fps
-                2_500_000,  // 2.5 Mbps bitrate
-                0,          // rotation
-                dpi
-            )
+            // Prepare video: width, height, bitrate (2.5Mbps)
+            val videoOk = stream.prepareVideo(width, height, 2_500_000)
 
-            val audioReady = rtmpsDisplay!!.prepareAudio(
-                128_000,    // bitrate
-                44100,      // sample rate
-                true,       // stereo
-                true,       // echo canceler
-                true        // noise suppressor
-            )
+            // Prepare audio: sampleRate, stereo, bitrate
+            val audioOk = stream.prepareAudio(44100, true, 128_000)
 
-            if (!videoReady || !audioReady) {
-                Log.e(TAG, "Prepare failed — video=$videoReady audio=$audioReady")
+            if (!videoOk || !audioOk) {
+                Log.e(TAG, "Prepare failed video=$videoOk audio=$audioOk")
                 onStateChanged(StreamState.ERROR)
                 return
             }
 
-            rtmpsDisplay!!.startDisplay(mediaProjection)
+            // Switch to screen source
+            stream.changeVideoSource(ScreenSource(context, mediaProjection))
+            stream.changeAudioSource(MicrophoneSource())
 
             val fullUrl = if (streamKey.isBlank()) rtmpsUrl
                          else "${rtmpsUrl.trimEnd('/')}/$streamKey"
 
-            Log.d(TAG, "Connecting: $fullUrl")
-            rtmpsDisplay!!.startStream(fullUrl)
+            Log.d(TAG, "Connecting to: $fullUrl")
+            stream.startStream(fullUrl)
 
         } catch (e: Exception) {
             Log.e(TAG, "startStreaming error: ${e.message}", e)
@@ -67,23 +63,23 @@ class StreamingManager(
 
     fun stopStreaming() {
         try {
-            rtmpsDisplay?.stopStream()
-            rtmpsDisplay?.stopDisplay()
-            rtmpsDisplay = null
+            rtmpStream?.stopStream()
+            rtmpStream?.release()
+            rtmpStream = null
             onStateChanged(StreamState.STOPPED)
         } catch (e: Exception) {
             Log.e(TAG, "stopStreaming error: ${e.message}", e)
         }
     }
 
-    fun isStreaming() = rtmpsDisplay?.isStreaming == true
+    fun isStreaming() = rtmpStream?.isStreaming == true
 
     private val connectChecker = object : ConnectChecker {
         override fun onConnectionStarted(url: String) {
             Log.d(TAG, "Connection started: $url")
         }
         override fun onConnectionSuccess() {
-            Log.d(TAG, "Connected!")
+            Log.d(TAG, "Connected! Streaming live.")
             onStateChanged(StreamState.LIVE)
         }
         override fun onConnectionFailed(reason: String) {
@@ -98,7 +94,7 @@ class StreamingManager(
             onStateChanged(StreamState.STOPPED)
         }
         override fun onAuthError() {
-            Log.e(TAG, "Auth error — check stream key")
+            Log.e(TAG, "Auth error")
             onStateChanged(StreamState.ERROR)
         }
         override fun onAuthSuccess() {
