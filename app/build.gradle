@@ -58,6 +58,7 @@ dependencies {
 
     // RTMPS streaming
     implementation 'com.github.pedroSG94.RootEncoder:library:2.7.2'
+    implementation 'com.github.pedroSG94.RootEncoder:extra-sources:2.7.2'
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
