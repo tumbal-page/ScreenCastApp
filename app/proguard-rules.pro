@@ -1,0 +1,3 @@
+-keep class com.pedro.** { *; }
+-keep class com.screencast.app.** { *; }
+-dontwarn com.pedro.**
